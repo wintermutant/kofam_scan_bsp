@@ -19,10 +19,19 @@ module KofamScan
     end
 
     def execute
+      warn "Starting KofamScan annotation..."
+
+      warn "Step 1/6: Parsing KO list..."
       parse_ko
+      ko_count = KO.instance_variable_get(:@ko_hash)&.size || 0
+      warn "  ✓ Loaded #{ko_count} KO entries from #{config.ko_list}"
+
+      warn "Step 2/6: Checking query names..."
       check_query_names
+      warn "  ✓ Found #{query_list.size} query sequences in #{config.query}"
 
       if config.reannotation?
+        warn "Step 3/6: Skipping hmmsearch (reannotation mode)"
         tabular_dir = File.join(config.tmp_dir, "tabular")
         unless File.exist?(tabular_dir)
           raise Error, <<~ERROR
@@ -31,12 +40,26 @@ module KofamScan
           ERROR
         end
       else
+        warn "Step 3/6: Setting up directories in #{config.tmp_dir}..."
         setup_directories
+        warn "  ✓ Directories created"
+
+        profiles = lookup_profiles(config.profile)
+        warn "Step 4/6: Running hmmsearch on #{profiles.size} profiles with #{config.cpu} CPU(s)..."
+        warn "  This may take a while..."
+        warn "  Monitor progress: ls #{File.join(config.tmp_dir, 'tabular')}/ | wc -l"
         run_hmmsearch
+        warn "  ✓ Completed hmmsearch for all profiles"
       end
 
+      warn "Step 5/6: Parsing hmmsearch results and scoring hits..."
       search_hit_genes
+      warn "  ✓ Results parsed"
+
+      warn "Step 6/6: Writing output to #{config.output_file || 'stdout'}..."
       output_hits
+      warn "  ✓ Output written"
+
       rearrange_alignments if config.create_alignment?
 
       unless config.keep_tabular?
@@ -48,6 +71,10 @@ module KofamScan
         combine_kofile("output", "output.txt")
         rm_kofile("output")
       end
+
+      warn "\n✓ KofamScan annotation completed successfully!"
+      warn "  Results: #{config.output_file || 'stdout'}"
+      warn "  Temp dir: #{config.tmp_dir}"
     end
 
     def rm_kofile(ko_dir)
